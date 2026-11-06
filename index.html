@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Classroom Question Picker & Timer</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at top left, #1e1b4b, #0f172a 60%, #020617);
+    }
+    .font-mono-num {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .glow-btn {
+      box-shadow: 0 0 25px rgba(99, 102, 241, 0.45);
+    }
+    .glow-btn:hover {
+      box-shadow: 0 0 35px rgba(139, 92, 246, 0.7);
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.92); opacity: 0.6; }
+      70% { transform: scale(1.03); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .winner-pop {
+      animation: popIn 0.35s ease-out forwards;
+    }
+    @keyframes pulseRing {
+      0% { transform: scale(0.98); opacity: 0.8; }
+      50% { transform: scale(1.02); opacity: 1; }
+      100% { transform: scale(0.98); opacity: 0.8; }
+    }
+    .timer-warning {
+      animation: pulseRing 0.8s infinite ease-in-out;
+      border-color: #ef4444 !important;
+      color: #ef4444 !important;
+    }
+  </style>
+</head>
+<body class="text-white min-h-screen flex flex-col items-center p-3 md:p-6 select-none">
+
+  <!-- Top Navigation Bar -->
+  <header class="w-full max-w-6xl glass-card rounded-2xl px-5 py-3.5 mb-5 flex flex-wrap justify-between items-center gap-4 shadow-lg">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-xl shadow-md">
+        🎯
+      </div>
+      <div>
+        <h1 class="text-lg md:text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-indigo-200 to-purple-300 bg-clip-text text-transparent">
+          Student Question Picker
+        </h1>
+        <p class="text-xs text-slate-400">Step 1: Pick Group &bull; Step 2: Draw &bull; Step 3: Answer Timer</p>
+      </div>
+    </div>
+
+    <!-- Step 1: Group Selector & Import Settings -->
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="flex items-center bg-slate-900/90 border border-indigo-500/40 rounded-xl px-3 py-1.5">
+        <span class="text-xs uppercase tracking-wider font-bold text-indigo-400 mr-2">1. Group:</span>
+        <select id="groupSelect" onchange="switchGroup()" class="bg-transparent text-white font-bold text-sm md:text-base focus:outline-none cursor-pointer pr-2">
+          <!-- Populated dynamically -->
+        </select>
+      </div>
+
+      <button onclick="toggleConfig()" class="bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-400/50 px-3.5 py-2 rounded-xl text-xs md:text-sm font-semibold transition flex items-center gap-1.5">
+        <span>📥</span> <span>Import Class List</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Collapsible Import Drawer -->
+  <div id="configPanel" class="hidden w-full max-w-6xl glass-card rounded-2xl p-5 mb-5 border-indigo-500/40 shadow-2xl">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      
+      <!-- Option A: Google Sheet / CSV Upload -->
+      <div class="bg-slate-900/70 p-4 rounded-xl border border-slate-700/70 flex flex-col justify-between">
+        <div>
+          <h2 class="text-sm font-bold text-indigo-300 mb-1">🔗 Option A: Google Sheet URL or Local CSV</h2>
+          <p class="text-xs text-slate-400 mb-3">
+            Expected 4 columns: <code class="text-indigo-300">Group, Class, Class number, Name</code>. Set Google Sheet share to <b>"Anyone with link"</b>.
+          </p>
+          <div class="flex gap-2 mb-3">
+            <input id="sheetUrlInput" type="text" placeholder="Paste Google Sheet URL..." 
+              class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-400" />
+            <button onclick="connectGoogleSheet()" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap">
+              Sync URL
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+          <span class="text-xs text-slate-400">Or pick a downloaded CSV file:</span>
+          <label class="bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition">
+            📂 Choose .CSV File
+            <input type="file" accept=".csv,.txt" onchange="handleFileUpload(event)" class="hidden" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Option B: Copy & Paste -->
+      <div class="bg-slate-900/70 p-4 rounded-xl border border-slate-700/70">
+        <h2 class="text-sm font-bold text-emerald-300 mb-1">📋 Option B: Direct Copy & Paste (100% Offline)</h2>
+        <p class="text-xs text-slate-400 mb-2">
+          Highlight your 4 columns in Google Sheets or Excel, hit <b>Ctrl+C</b>, and paste here:
+        </p>
+        <textarea id="pasteArea" rows="3" placeholder="4Cr5	4A	03	Chan Tai Man&#10;5Cr1	5B	11	Ho Ka Yan" 
+          class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-400 font-mono mb-2"></textarea>
+        <button onclick="importFromPaste()" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-xl text-xs font-bold transition">
+          ✅ Save Pasted List to Browser Memory
+        </button>
+      </div>
+
+    </div>
+    <p id="syncStatus" class="text-xs font-semibold text-amber-300 mt-3 text-center"></p>
+  </div>
+
+  <!-- Main Stage -->
+  <main class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-5 flex-1">
+    
+    <!-- Left Stage: Picker Card & Live Answer Timer -->
+    <div class="lg:col-span-2 flex flex-col gap-4">
+      
+      <!-- Student Reveal Card -->
+      <div class="glass-card rounded-3xl p-6 sm:p-8 flex flex-col justify-between items-center relative overflow-hidden shadow-2xl min-h-[360px]">
+        
+        <!-- Top Status Row -->
+        <div class="w-full flex justify-between items-center">
+          <span id="groupBadge" class="px-3.5 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-widest bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            GROUP: 4Cr5
+          </span>
+          <span id="remainingBadge" class="text-xs font-semibold text-slate-400 bg-slate-800/80 px-3 py-1.5 rounded-full">
+            Pool: 0 / 0
+          </span>
+        </div>
+
+        <!-- Center Student Details -->
+        <div id="resultCard" class="my-auto text-center w-full py-4">
+          
+          <!-- Class & Class No Pills -->
+          <div id="metaBadges" class="flex justify-center items-center gap-3 mb-4 opacity-40 transition-opacity duration-300">
+            <div class="bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 px-4 py-1.5 rounded-xl text-sm font-bold">
+              Class: <span id="stuClass" class="text-white font-extrabold">--</span>
+            </div>
+            <div class="bg-amber-500/15 border border-amber-400/30 text-amber-300 px-4 py-1.5 rounded-xl text-sm font-bold">
+              Class No: <span id="stuNo" class="text-white font-extrabold">#--</span>
+            </div>
+          </div>
+
+          <!-- Student Name -->
+          <div id="stuName" class="text-4xl sm:text-6xl font-extrabold tracking-tight text-white drop-shadow-md px-2 leading-tight">
+            Ready to Draw!
+          </div>
+          <p id="subPrompt" class="text-xs sm:text-sm text-slate-400 mt-2">
+            Click 'Draw Student' or press the Spacebar
+          </p>
+        </div>
+
+        <!-- Bottom Controls -->
+        <div class="w-full flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t border-slate-700/60">
+          <label class="flex items-center gap-2 text-xs sm:text-sm text-slate-300 cursor-pointer hover:text-white transition">
+            <input id="noRepeatToggle" type="checkbox" checked class="w-4 h-4 rounded accent-indigo-500" />
+            <span>No-repeat mode (exclude drawn students)</span>
+          </label>
+
+          <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+            <button onclick="resetGroup()" title="Reset current pool" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 px-3.5 py-3 rounded-2xl text-xs sm:text-sm font-bold transition active:scale-95">
+              🔄 Reset
+            </button>
+            <button id="drawBtn" onclick="drawStudent()" class="flex-1 sm:flex-initial bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-400 hover:to-pink-400 text-white px-7 py-3 rounded-2xl text-base sm:text-lg font-extrabold glow-btn transition transform active:scale-95">
+              🎲 Draw Student
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Answering Timer Card -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 border border-indigo-500/20">
+        
+        <!-- Timer Display & Status -->
+        <div class="flex items-center gap-4">
+          <div id="timerDisplayBox" class="w-24 h-16 rounded-xl bg-slate-900 border-2 border-indigo-500/40 flex items-center justify-center shadow-inner">
+            <span id="timerText" class="font-mono-num text-3xl font-extrabold text-indigo-300">00:30</span>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-bold text-slate-200">Answer Countdown</span>
+              <span id="timerStatusBadge" class="text-[10px] uppercase font-bold bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">Standby</span>
+            </div>
+            <label class="flex items-center gap-1.5 text-xs text-slate-400 mt-1 cursor-pointer hover:text-slate-300">
+              <input id="autoStartTimer" type="checkbox" checked class="w-3.5 h-3.5 rounded accent-indigo-500" />
+              <span>Auto-start timer when student is drawn</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Presets and Timer Actions -->
+        <div class="flex flex-wrap items-center gap-2 justify-center">
+          <div class="flex bg-slate-900/80 rounded-xl p-1 border border-slate-700/60">
+            <button onclick="setTimerDuration(15)" class="timer-preset-btn px-2.5 py-1 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800">15s</button>
+            <button onclick="setTimerDuration(30)" class="timer-preset-btn px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-600 text-white">30s</button>
+            <button onclick="setTimerDuration(45)" class="timer-preset-btn px-2.5 py-1 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800">45s</button>
+            <button onclick="setTimerDuration(60)" class="timer-preset-btn px-2.5 py-1 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800">60s</button>
+          </div>
+
+          <button id="timerToggleBtn" onclick="toggleTimer()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1">
+            ▶️ Start
+          </button>
+          <button onclick="addSeconds(10)" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 px-2.5 py-2 rounded-xl text-xs font-bold transition" title="Add 10 seconds">
+            +10s
+          </button>
+          <button onclick="resetTimer()" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 px-2.5 py-2 rounded-xl text-xs font-bold transition" title="Reset to preset">
+            ⏱️ Reset
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Right Stage: Drawn History -->
+    <div class="glass-card rounded-3xl p-5 flex flex-col justify-between shadow-xl">
+      <div>
+        <div class="flex justify-between items-center mb-3 pb-3 border-b border-slate-700/70">
+          <h3 class="font-bold text-sm sm:text-base text-slate-200 flex items-center gap-2">
+            <span>🏆</span> Drawn Students
+          </h3>
+          <span id="drawnCountBadge" class="text-xs font-bold bg-indigo-500/20 text-indigo-300 px-2.5 py-1 rounded-lg">
+            0 Drawn
+          </span>
+        </div>
+
+        <ul id="historyList" class="space-y-2 max-h-[460px] overflow-y-auto pr-1 text-xs sm:text-sm">
+          <li class="text-slate-500 italic text-center py-10">No students drawn in this group yet.</li>
+        </ul>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-700/60 text-xs text-slate-400 flex justify-between items-center">
+        <span>💡 Press <b>Spacebar</b> to draw</span>
+        <button onclick="clearSavedData()" class="text-slate-500 hover:text-rose-400 underline">Reset Demo</button>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // Default 4-Column Fallback Data
+    const defaultData = {
+      "4Cr5": [
+        { cls: "4A", no: "03", name: "Chan Tai Man" },
+        { cls: "4A", no: "14", name: "Cheung Siu Ming" },
+        { cls: "4B", no: "07", name: "Lau Kar Wai" },
+        { cls: "4C", no: "19", name: "Wong Tsz Hin" },
+        { cls: "4D", no: "22", name: "Yip Wing Yan" }
+      ],
+      "5Cr1": [
+        { cls: "5A", no: "02", name: "Ho Ka Yan" },
+        { cls: "5B", no: "11", name: "Lam Cheuk Yin" },
+        { cls: "5B", no: "18", name: "Ng Wing Sze" },
+        { cls: "5C", no: "09", name: "Yip Chun Kit" }
+      ],
+      "6Cr4": [
+        { cls: "6A", no: "05", name: "Cheng Ho Yin" },
+        { cls: "6B", no: "12", name: "Fung Lok Yi" },
+        { cls: "6C", no: "16", name: "Kwok Tsz Ching" },
+        { cls: "6D", no: "25", name: "Tse Pak Ho" }
+      ]
+    };
+
+    let groupData = JSON.parse(JSON.stringify(defaultData));
+    let currentGroup = "4Cr5";
+    let remainingPool = {};
+    let drawnHistory = {};
+    let isDrawing = false;
+
+    // Timer Variables
+    let selectedDuration = 30; // seconds
+    let timeLeft = 30;
+    let timerInterval = null;
+    let isTimerRunning = false;
+
+    // Synthesized Sound Effects (No external audio files needed!)
+    function playBeep(frequency = 587.33, duration = 0.15, type = "sine") {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.value = frequency;
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function playTimesUpAlarm() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        [0, 0.18, 0.36].forEach(delay => {
+          setTimeout(() => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = "triangle";
+            osc.frequency.value = 880;
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.15);
+          }, delay * 1000);
+        });
+      } catch (e) {}
+    }
+
+    function initApp() {
+      const savedRoster = localStorage.getItem("savedClassRoster_4col");
+      if (savedRoster) {
+        try { groupData = JSON.parse(savedRoster); } catch (e) {}
+      }
+      setupPools();
+
+      const savedUrl = localStorage.getItem("sheetUrl_4col");
+      if (savedUrl) {
+        document.getElementById("sheetUrlInput").value = savedUrl;
+        connectGoogleSheet(savedUrl, true);
+      }
+
+      updateTimerDisplay();
+    }
+
+    function setupPools() {
+      const select = document.getElementById("groupSelect");
+      select.innerHTML = "";
+      const groups = Object.keys(groupData);
+
+      groups.forEach(grp => {
+        remainingPool[grp] = [...groupData[grp]];
+        drawnHistory[grp] = [];
+        const opt = document.createElement("option");
+        opt.value = grp;
+        opt.textContent = grp;
+        opt.className = "bg-slate-900 text-white";
+        select.appendChild(opt);
+      });
+
+      currentGroup = groups[0] || "";
+      switchGroup();
+    }
+
+    function switchGroup() {
+      currentGroup = document.getElementById("groupSelect").value;
+      const total = groupData[currentGroup]?.length || 0;
+
+      document.getElementById("groupBadge").textContent = `GROUP: ${currentGroup}`;
+      document.getElementById("stuName").textContent = "Ready to Draw!";
+      document.getElementById("stuClass").textContent = "--";
+      document.getElementById("stuNo").textContent = "#--";
+      document.getElementById("metaBadges").classList.add("opacity-40");
+      document.getElementById("subPrompt").textContent = `${total} students loaded in ${currentGroup}`;
+      resetTimer();
+      updateUI();
+    }
+
+    function drawStudent() {
+      if (isDrawing || !currentGroup) return;
+
+      const noRepeat = document.getElementById("noRepeatToggle").checked;
+      const pool = noRepeat ? remainingPool[currentGroup] : groupData[currentGroup];
+
+      if (!pool || pool.length === 0) {
+        document.getElementById("stuName").textContent = "All Students Drawn! 🎉";
+        document.getElementById("subPrompt").textContent = "Click 'Reset' to restart this group.";
+        return;
+      }
+
+      isDrawing = true;
+      resetTimer();
+
+      const fullList = groupData[currentGroup];
+      const nameEl = document.getElementById("stuName");
+      const classEl = document.getElementById("stuClass");
+      const noEl = document.getElementById("stuNo");
+      const metaBadges = document.getElementById("metaBadges");
+      const resultCard = document.getElementById("resultCard");
+
+      metaBadges.classList.remove("opacity-40");
+      resultCard.classList.remove("winner-pop");
+      document.getElementById("subPrompt").textContent = "Selecting a student...";
+
+      let ticks = 0;
+      const interval = setInterval(() => {
+        const randStu = fullList[Math.floor(Math.random() * fullList.length)];
+        nameEl.textContent = randStu.name;
+        classEl.textContent = randStu.cls;
+        noEl.textContent = `#${randStu.no}`;
+        ticks++;
+
+        // Mechanical clicking sound during spin
+        playBeep(260 + (ticks * 15), 0.04, "sine");
+
+        if (ticks >= 18) {
+          clearInterval(interval);
+          
+          const winIdx = Math.floor(Math.random() * pool.length);
+          const winner = pool[winIdx];
+
+          if (noRepeat) pool.splice(winIdx, 1);
+          drawnHistory[currentGroup].unshift(winner);
+
+          nameEl.textContent = winner.name;
+          classEl.textContent = winner.cls;
+          noEl.textContent = `#${winner.no}`;
+          document.getElementById("subPrompt").textContent = `Selected from Group ${currentGroup}`;
+          resultCard.classList.add("winner-pop");
+
+          // Confetti Celebration
+          if (typeof confetti === "function") {
+            confetti({ particleCount: 50, spread: 65, origin: { y: 0.6 } });
+          }
+
+          // Fanfare tone
+          playBeep(659.25, 0.25, "triangle");
+
+          isDrawing = false;
+          updateUI();
+
+          // Auto-start Timer if enabled
+          if (document.getElementById("autoStartTimer").checked) {
+            startTimer();
+          }
+        }
+      }, 55);
+    }
+
+    function resetGroup() {
+      if (!currentGroup) return;
+      remainingPool[currentGroup] = [...groupData[currentGroup]];
+      drawnHistory[currentGroup] = [];
+      resetTimer();
+      switchGroup();
+    }
+
+    function updateUI() {
+      const rem = remainingPool[currentGroup]?.length || 0;
+      const total = groupData[currentGroup]?.length || 0;
+      const history = drawnHistory[currentGroup] || [];
+
+      document.getElementById("remainingBadge").textContent = `Remaining: ${rem} / ${total}`;
+      document.getElementById("drawnCountBadge").textContent = `${history.length} Drawn`;
+
+      const histEl = document.getElementById("historyList");
+      if (history.length === 0) {
+        histEl.innerHTML = `<li class="text-slate-500 italic text-center py-10">No students drawn in this group yet.</li>`;
+      } else {
+        histEl.innerHTML = history.map((s, idx) => `
+          <li class="bg-slate-800/90 border border-slate-700/80 px-3 py-2 rounded-xl flex justify-between items-center">
+            <div class="flex items-center gap-2">
+              <span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold text-xs px-2 py-0.5 rounded-md">
+                ${s.cls} #${s.no}
+              </span>
+              <span class="font-semibold text-white">${s.name}</span>
+            </div>
+            <span class="text-xs text-slate-400 font-medium">#${history.length - idx}</span>
+          </li>
+        `).join("");
+      }
+    }
+
+    /* ========================================================
+       TIMER LOGIC
+    ======================================================== */
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+
+    function updateTimerDisplay() {
+      const textEl = document.getElementById("timerText");
+      const boxEl = document.getElementById("timerDisplayBox");
+      textEl.textContent = formatTime(timeLeft);
+
+      if (timeLeft <= 5 && isTimerRunning) {
+        boxEl.classList.add("timer-warning");
+        textEl.classList.remove("text-indigo-300");
+        textEl.classList.add("text-rose-400");
+      } else {
+        boxEl.classList.remove("timer-warning");
+        textEl.classList.add("text-indigo-300");
+        textEl.classList.remove("text-rose-400");
+      }
+    }
+
+    function setTimerDuration(seconds) {
+      selectedDuration = seconds;
+      resetTimer();
+
+      // Highlight active preset button
+      document.querySelectorAll(".timer-preset-btn").forEach(btn => {
+        const val = parseInt(btn.textContent);
+        if (val === seconds) {
+          btn.className = "timer-preset-btn px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-600 text-white";
+        } else {
+          btn.className = "timer-preset-btn px-2.5 py-1 text-xs font-semibold rounded-lg text-slate-300 hover:text-white hover:bg-slate-800";
+        }
+      });
+    }
+
+    function toggleTimer() {
+      if (isTimerRunning) {
+        pauseTimer();
+      } else {
+        startTimer();
+      }
+    }
+
+    function startTimer() {
+      if (isTimerRunning) return;
+      if (timeLeft <= 0) timeLeft = selectedDuration;
+
+      isTimerRunning = true;
+      document.getElementById("timerToggleBtn").textContent = "⏸️ Pause";
+      document.getElementById("timerToggleBtn").className = "bg-amber-600 hover:bg-amber-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1";
+      document.getElementById("timerStatusBadge").textContent = "Timing";
+      document.getElementById("timerStatusBadge").className = "text-[10px] uppercase font-bold bg-indigo-500/30 text-indigo-300 px-2 py-0.5 rounded-full";
+
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        updateTimerDisplay();
+
+        if (timeLeft <= 5 && timeLeft > 0) {
+          playBeep(440, 0.08, "square"); // Tick warning sound
+        }
+
+        if (timeLeft <= 0) {
+          clearInterval(timerInterval);
+          isTimerRunning = false;
+          playTimesUpAlarm();
+          document.getElementById("timerToggleBtn").textContent = "▶️ Start";
+          document.getElementById("timerToggleBtn").className = "bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1";
+          document.getElementById("timerStatusBadge").textContent = "Time's Up!";
+          document.getElementById("timerStatusBadge").className = "text-[10px] uppercase font-bold bg-rose-500/30 text-rose-300 px-2 py-0.5 rounded-full animate-bounce";
+        }
+      }, 1000);
+
+      updateTimerDisplay();
+    }
+
+    function pauseTimer() {
+      clearInterval(timerInterval);
+      isTimerRunning = false;
+      document.getElementById("timerToggleBtn").textContent = "▶️ Resume";
+      document.getElementById("timerToggleBtn").className = "bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1";
+      document.getElementById("timerStatusBadge").textContent = "Paused";
+      document.getElementById("timerStatusBadge").className = "text-[10px] uppercase font-bold bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full";
+      updateTimerDisplay();
+    }
+
+    function resetTimer() {
+      clearInterval(timerInterval);
+      isTimerRunning = false;
+      timeLeft = selectedDuration;
+      document.getElementById("timerToggleBtn").textContent = "▶️ Start";
+      document.getElementById("timerToggleBtn").className = "bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1";
+      document.getElementById("timerStatusBadge").textContent = "Standby";
+      document.getElementById("timerStatusBadge").className = "text-[10px] uppercase font-bold bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full";
+      updateTimerDisplay();
+    }
+
+    function addSeconds(sec) {
+      timeLeft += sec;
+      updateTimerDisplay();
+    }
+
+    function toggleConfig() {
+      document.getElementById("configPanel").classList.toggle("hidden");
+    }
+
+    /* ========================================================
+       DATA PARSING & IMPORT ENGINES
+    ======================================================== */
+    function parseRawTextToGroups(rawText) {
+      const lines = rawText.split(/\r?\n/).filter(l => l.trim() !== "");
+      if (lines.length === 0) return null;
+
+      const parsed = {};
+      const splitLine = (line) => {
+        if (line.includes("\t")) return line.split("\t").map(s => s.trim());
+        const res = [];
+        let cur = "", inQuotes = false;
+        for (let ch of line) {
+          if (ch === '"') inQuotes = !inQuotes;
+          else if (ch === ',' && !inQuotes) { res.push(cur.trim()); cur = ""; }
+          else cur += ch;
+        }
+        res.push(cur.trim());
+        return res;
+      };
+
+      const firstRow = splitLine(lines[0]);
+      const isHeader = firstRow[0]?.toLowerCase().includes("group") || firstRow[1]?.toLowerCase().includes("class");
+      const startIdx = isHeader ? 1 : 0;
+
+      for (let i = startIdx; i < lines.length; i++) {
+        const [grp, cls, no, name] = splitLine(lines[i]);
+        if (grp && name) {
+          if (!parsed[grp]) parsed[grp] = [];
+          parsed[grp].push({ cls: cls || "-", no: no || "-", name });
+        }
+      }
+      return Object.keys(parsed).length > 0 ? parsed : null;
+    }
+
+    window.handleGvizResponse = function(response) {
+      const status = document.getElementById("syncStatus");
+      if (!response || response.status === "error" || !response.table) {
+        status.textContent = "⚠️ Could not read sheet. Ensure share is 'Anyone with link', or use Option B (Copy & Paste).";
+        return;
+      }
+
+      const rows = response.table.rows;
+      const parsed = {};
+      let count = 0;
+
+      rows.forEach(r => {
+        const c = r.c;
+        if (!c) return;
+        const grp = c[0]?.f || c[0]?.v ? String(c[0].f || c[0].v).trim() : "";
+        const cls = c[1]?.f || c[1]?.v ? String(c[1].f || c[1].v).trim() : "-";
+        const no  = c[2]?.f || c[2]?.v ? String(c[2].f || c[2].v).trim() : "-";
+        const name = c[3]?.f || c[3]?.v ? String(c[3].f || c[3].v).trim() : "";
+
+        if (grp && name && grp.toLowerCase() !== "group") {
+          if (!parsed[grp]) parsed[grp] = [];
+          parsed[grp].push({ cls, no, name });
+          count++;
+        }
+      });
+
+      if (Object.keys(parsed).length > 0) {
+        groupData = parsed;
+        localStorage.setItem("savedClassRoster_4col", JSON.stringify(parsed));
+        setupPools();
+        status.textContent = `✅ Loaded ${Object.keys(parsed).length} groups (${count} students) from Google Sheet!`;
+      } else {
+        status.textContent = "⚠️ Found sheet, but 4 columns (Group, Class, Class number, Name) could not be parsed.";
+      }
+    };
+
+    async function connectGoogleSheet(customUrl, silent = false) {
+      const url = customUrl || document.getElementById("sheetUrlInput").value.trim();
+      const status = document.getElementById("syncStatus");
+      if (!url) return;
+
+      localStorage.setItem("sheetUrl_4col", url);
+      if (!silent) status.textContent = "⏳ Connecting to Google Sheet...";
+
+      const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (idMatch && !url.includes("/d/e/")) {
+        const sheetId = idMatch[1];
+        const gidMatch = url.match(/gid=([0-9]+)/);
+        const gidParam = gidMatch ? `&gid=${gidMatch[1]}` : "";
+
+        const oldScript = document.getElementById("gvizScript");
+        if (oldScript) oldScript.remove();
+
+        const script = document.createElement("script");
+        script.id = "gvizScript";
+        script.src = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=responseHandler:handleGvizResponse${gidParam}`;
+        script.onerror = () => {
+          status.textContent = "⚠️ Connection restricted by school domain. Please use Option B (Copy & Paste) on the right!";
+        };
+        document.body.appendChild(script);
+        return;
+      }
+
+      try {
+        const res = await fetch(url);
+        const text = await res.text();
+        const parsed = parseRawTextToGroups(text);
+        if (parsed) {
+          groupData = parsed;
+          localStorage.setItem("savedClassRoster_4col", JSON.stringify(parsed));
+          setupPools();
+          status.textContent = `✅ Loaded ${Object.keys(parsed).length} groups from CSV link!`;
+        }
+      } catch (err) {
+        status.textContent = "⚠️ Browser blocked local CSV fetch. Use Option B (Copy & Paste)!";
+      }
+    }
+
+    function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const parsed = parseRawTextToGroups(e.target.result);
+        const status = document.getElementById("syncStatus");
+        if (parsed) {
+          groupData = parsed;
+          localStorage.setItem("savedClassRoster_4col", JSON.stringify(parsed));
+          setupPools();
+          status.textContent = `✅ Loaded ${Object.keys(parsed).length} groups from ${file.name}!`;
+        } else {
+          status.textContent = "⚠️ Invalid CSV format. Check that Columns A-D are Group, Class, Class number, Name.";
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function importFromPaste() {
+      const raw = document.getElementById("pasteArea").value;
+      const status = document.getElementById("syncStatus");
+      const parsed = parseRawTextToGroups(raw);
+
+      if (parsed) {
+        groupData = parsed;
+        localStorage.setItem("savedClassRoster_4col", JSON.stringify(parsed));
+        setupPools();
+        status.textContent = `✅ Saved ${Object.keys(parsed).length} groups to browser memory!`;
+        document.getElementById("pasteArea").value = "";
+      } else {
+        status.textContent = "⚠️ Please paste 4 columns: Group, Class, Class number, Name.";
+      }
+    }
+
+    function clearSavedData() {
+      localStorage.removeItem("savedClassRoster_4col");
+      localStorage.removeItem("sheetUrl_4col");
+      groupData = JSON.parse(JSON.stringify(defaultData));
+      document.getElementById("sheetUrlInput").value = "";
+      document.getElementById("syncStatus").textContent = "Restored default sample data.";
+      setupPools();
+    }
+
+    // Spacebar shortcut to draw
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "Space" && !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) {
+        e.preventDefault();
+        drawStudent();
+      }
+    });
+
+    initApp();
+  </script>
+</body>
+</html>
