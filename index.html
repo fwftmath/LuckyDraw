@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
-  
+
   <style>
     body {
       font-family: 'Plus Jakarta Sans', sans-serif;
@@ -20,7 +20,7 @@
       font-family: 'JetBrains Mono', monospace;
     }
     .glass-card {
-      background: rgba(30, 41, 59, 0.7);
+      background: rgba(30, 41, 59, 0.72);
       backdrop-filter: blur(16px);
       border: 1px solid rgba(255, 255, 255, 0.1);
     }
@@ -48,6 +48,9 @@
       border-color: #ef4444 !important;
       color: #ef4444 !important;
     }
+    .photo-shadow {
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(99, 102, 241, 0.3);
+    }
   </style>
 </head>
 <body class="text-white min-h-screen flex flex-col items-center p-3 md:p-6 select-none">
@@ -62,7 +65,7 @@
         <h1 class="text-lg md:text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-indigo-200 to-purple-300 bg-clip-text text-transparent">
           Student Question Picker
         </h1>
-        <p class="text-xs text-slate-400">Step 1: Pick Group &bull; Step 2: Draw &bull; Step 3: Answer Timer</p>
+        <p class="text-xs text-slate-400">Step 1: Pick Group &bull; Step 2: Draw Student &bull; Step 3: Countdown Timer</p>
       </div>
     </div>
 
@@ -84,13 +87,16 @@
   <!-- Collapsible Import Drawer -->
   <div id="configPanel" class="hidden w-full max-w-6xl glass-card rounded-2xl p-5 mb-5 border-indigo-500/40 shadow-2xl">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-      
+
       <!-- Option A: Google Sheet / CSV Upload -->
       <div class="bg-slate-900/70 p-4 rounded-xl border border-slate-700/70 flex flex-col justify-between">
         <div>
           <h2 class="text-sm font-bold text-indigo-300 mb-1">🔗 Option A: Google Sheet URL or Local CSV</h2>
-          <p class="text-xs text-slate-400 mb-3">
-            Expected 4 columns: <code class="text-indigo-300">Group, Class, Class number, Name</code>. Set Google Sheet share to <b>"Anyone with link"</b>.
+          <p class="text-xs text-slate-400 mb-2">
+            Columns: <code class="text-indigo-300">Group, Class, Class No, Name</code> + Column E: <code class="text-emerald-300">Photo URL</code>.
+          </p>
+          <p class="text-[11px] text-slate-500 mb-3">
+            💡 Supports Google Drive sharing links (`/file/d/ID/view`), direct image links, or leaves avatar showing the last 2 words of the student name.
           </p>
           <div class="flex gap-2 mb-3">
             <input id="sheetUrlInput" type="text" placeholder="Paste Google Sheet URL..." 
@@ -114,9 +120,9 @@
       <div class="bg-slate-900/70 p-4 rounded-xl border border-slate-700/70">
         <h2 class="text-sm font-bold text-emerald-300 mb-1">📋 Option B: Direct Copy & Paste (100% Offline)</h2>
         <p class="text-xs text-slate-400 mb-2">
-          Highlight your 4 columns in Google Sheets or Excel, hit <b>Ctrl+C</b>, and paste here:
+          Copy 4 or 5 columns from Google Sheet / Excel and paste here:
         </p>
-        <textarea id="pasteArea" rows="3" placeholder="4Cr5	4A	03	Chan Tai Man&#10;5Cr1	5B	11	Ho Ka Yan" 
+        <textarea id="pasteArea" rows="3" placeholder="4Cr5	4A	03	Chan Tai Man	https://drive.google.com/...&#10;5Cr1	5B	11	Ho Ka Yan" 
           class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-400 font-mono mb-2"></textarea>
         <button onclick="importFromPaste()" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-xl text-xs font-bold transition">
           ✅ Save Pasted List to Browser Memory
@@ -129,13 +135,13 @@
 
   <!-- Main Stage -->
   <main class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-5 flex-1">
-    
+
     <!-- Left Stage: Picker Card & Live Answer Timer -->
     <div class="lg:col-span-2 flex flex-col gap-4">
-      
+
       <!-- Student Reveal Card -->
-      <div class="glass-card rounded-3xl p-6 sm:p-8 flex flex-col justify-between items-center relative overflow-hidden shadow-2xl min-h-[360px]">
-        
+      <div class="glass-card rounded-3xl p-6 sm:p-8 flex flex-col justify-between items-center relative overflow-hidden shadow-2xl min-h-[400px]">
+
         <!-- Top Status Row -->
         <div class="w-full flex justify-between items-center">
           <span id="groupBadge" class="px-3.5 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-widest bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
@@ -146,21 +152,29 @@
           </span>
         </div>
 
-        <!-- Center Student Details -->
-        <div id="resultCard" class="my-auto text-center w-full py-4">
-          
-          <!-- Class & Class No Pills -->
-          <div id="metaBadges" class="flex justify-center items-center gap-3 mb-4 opacity-40 transition-opacity duration-300">
-            <div class="bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 px-4 py-1.5 rounded-xl text-sm font-bold">
+        <!-- Center Student Details with Photo Avatar -->
+        <div id="resultCard" class="my-auto text-center w-full py-2 flex flex-col items-center">
+
+          <!-- Student Photo / Avatar Circle -->
+          <div class="relative mb-4">
+            <div id="photoContainer" class="w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-indigo-500/40 bg-slate-800 overflow-hidden photo-shadow flex items-center justify-center transition-transform duration-300">
+              <span id="avatarFallback" class="text-xl sm:text-2xl font-extrabold text-indigo-200 tracking-wide text-center px-2 break-words leading-tight">🎯</span>
+              <img id="stuPhoto" src="" alt="Student Photo" class="hidden w-full h-full object-cover" />
+            </div>
+          </div>
+
+          <!-- Class & Class No Badges -->
+          <div id="metaBadges" class="flex justify-center items-center gap-2.5 mb-3 opacity-40 transition-opacity duration-300">
+            <div class="bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 px-3.5 py-1 rounded-xl text-xs sm:text-sm font-bold">
               Class: <span id="stuClass" class="text-white font-extrabold">--</span>
             </div>
-            <div class="bg-amber-500/15 border border-amber-400/30 text-amber-300 px-4 py-1.5 rounded-xl text-sm font-bold">
+            <div class="bg-amber-500/15 border border-amber-400/30 text-amber-300 px-3.5 py-1 rounded-xl text-xs sm:text-sm font-bold">
               Class No: <span id="stuNo" class="text-white font-extrabold">#--</span>
             </div>
           </div>
 
           <!-- Student Name -->
-          <div id="stuName" class="text-4xl sm:text-6xl font-extrabold tracking-tight text-white drop-shadow-md px-2 leading-tight">
+          <div id="stuName" class="text-3xl sm:text-5xl font-extrabold tracking-tight text-white drop-shadow-md px-2 leading-tight">
             Ready to Draw!
           </div>
           <p id="subPrompt" class="text-xs sm:text-sm text-slate-400 mt-2">
@@ -188,7 +202,7 @@
 
       <!-- Answering Timer Card -->
       <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 border border-indigo-500/20">
-        
+
         <!-- Timer Display & Status -->
         <div class="flex items-center gap-4">
           <div id="timerDisplayBox" class="w-24 h-16 rounded-xl bg-slate-900 border-2 border-indigo-500/40 flex items-center justify-center shadow-inner">
@@ -242,7 +256,7 @@
           </span>
         </div>
 
-        <ul id="historyList" class="space-y-2 max-h-[460px] overflow-y-auto pr-1 text-xs sm:text-sm">
+        <ul id="historyList" class="space-y-2.5 max-h-[460px] overflow-y-auto pr-1 text-xs sm:text-sm">
           <li class="text-slate-500 italic text-center py-10">No students drawn in this group yet.</li>
         </ul>
       </div>
@@ -256,26 +270,26 @@
   </main>
 
   <script>
-    // Default 4-Column Fallback Data
+    // 4 or 5 Column Structure: Group, Class, Class No, Name, [Photo URL]
     const defaultData = {
       "4Cr5": [
-        { cls: "4A", no: "03", name: "Chan Tai Man" },
-        { cls: "4A", no: "14", name: "Cheung Siu Ming" },
-        { cls: "4B", no: "07", name: "Lau Kar Wai" },
-        { cls: "4C", no: "19", name: "Wong Tsz Hin" },
-        { cls: "4D", no: "22", name: "Yip Wing Yan" }
+        { cls: "4A", no: "03", name: "Chan Tai Man", photo: "" },
+        { cls: "4A", no: "14", name: "Cheung Siu Ming", photo: "" },
+        { cls: "4B", no: "07", name: "Lau Kar Wai", photo: "" },
+        { cls: "4C", no: "19", name: "Wong Tsz Hin", photo: "" },
+        { cls: "4D", no: "22", name: "Yip Wing Yan", photo: "" }
       ],
       "5Cr1": [
-        { cls: "5A", no: "02", name: "Ho Ka Yan" },
-        { cls: "5B", no: "11", name: "Lam Cheuk Yin" },
-        { cls: "5B", no: "18", name: "Ng Wing Sze" },
-        { cls: "5C", no: "09", name: "Yip Chun Kit" }
+        { cls: "5A", no: "02", name: "Ho Ka Yan", photo: "" },
+        { cls: "5B", no: "11", name: "Lam Cheuk Yin", photo: "" },
+        { cls: "5B", no: "18", name: "Ng Wing Sze", photo: "" },
+        { cls: "5C", no: "09", name: "Yip Chun Kit", photo: "" }
       ],
       "6Cr4": [
-        { cls: "6A", no: "05", name: "Cheng Ho Yin" },
-        { cls: "6B", no: "12", name: "Fung Lok Yi" },
-        { cls: "6C", no: "16", name: "Kwok Tsz Ching" },
-        { cls: "6D", no: "25", name: "Tse Pak Ho" }
+        { cls: "6A", no: "05", name: "Cheng Ho Yin", photo: "" },
+        { cls: "6B", no: "12", name: "Fung Lok Yi", photo: "" },
+        { cls: "6C", no: "16", name: "Kwok Tsz Ching", photo: "" },
+        { cls: "6D", no: "25", name: "Tse Pak Ho", photo: "" }
       ]
     };
 
@@ -286,12 +300,76 @@
     let isDrawing = false;
 
     // Timer Variables
-    let selectedDuration = 30; // seconds
+    let selectedDuration = 30;
     let timeLeft = 30;
     let timerInterval = null;
     let isTimerRunning = false;
 
-    // Synthesized Sound Effects (No external audio files needed!)
+    // Helper: Turn any Google Drive link or direct URL into an embeddable image URL
+    function formatPhotoUrl(rawUrl) {
+      if (!rawUrl) return "";
+      const trimmed = String(rawUrl).trim();
+      if (!trimmed || trimmed === "-" || trimmed.toLowerCase() === "undefined") return "";
+
+      // Handle Google Drive links
+      const driveMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
+                         trimmed.match(/id=([a-zA-Z0-9_-]+)/) ||
+                         trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (driveMatch) {
+        const fileId = driveMatch[1];
+        // lh3 thumbnail preview format works across school domains without CORS/cookie blocks
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w600`;
+      }
+
+      return trimmed;
+    }
+
+    // Helper: Display last 2 words of the student name for avatar fallback
+    function getLastTwoWords(name) {
+      if (!name || name === "Ready to Draw!" || name === "All Done") return "🎯";
+      const cleaned = name.trim();
+      
+      // If English / space-separated words (e.g. "Chan Tai Man" -> "Tai Man")
+      const words = cleaned.split(/\s+/).filter(Boolean);
+      if (words.length >= 2) {
+        return words.slice(-2).join(" ");
+      } else if (words.length === 1) {
+        const word = words[0];
+        // If Chinese characters without spaces (e.g. "陳大文" -> "大文")
+        if (word.length >= 2) {
+          return word.slice(-2);
+        }
+        return word;
+      }
+      return "🎓";
+    }
+
+    // Display student photo or avatar fallback
+    function renderPhoto(photoUrl, name) {
+      const imgEl = document.getElementById("stuPhoto");
+      const fallbackEl = document.getElementById("avatarFallback");
+      const directUrl = formatPhotoUrl(photoUrl);
+
+      if (directUrl) {
+        imgEl.onerror = function() {
+          // Fallback if image fails to load (e.g. broken link or restricted permissions)
+          this.classList.add("hidden");
+          fallbackEl.classList.remove("hidden");
+          fallbackEl.textContent = getLastTwoWords(name);
+        };
+        imgEl.onload = function() {
+          this.classList.remove("hidden");
+          fallbackEl.classList.add("hidden");
+        };
+        imgEl.src = directUrl;
+      } else {
+        imgEl.classList.add("hidden");
+        fallbackEl.classList.remove("hidden");
+        fallbackEl.textContent = getLastTwoWords(name);
+      }
+    }
+
+    // Sound FX via Web Audio API
     function playBeep(frequency = 587.33, duration = 0.15, type = "sine") {
       try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -329,13 +407,13 @@
     }
 
     function initApp() {
-      const savedRoster = localStorage.getItem("savedClassRoster_4col");
+      const savedRoster = localStorage.getItem("savedClassRoster_photo_v2");
       if (savedRoster) {
         try { groupData = JSON.parse(savedRoster); } catch (e) {}
       }
       setupPools();
 
-      const savedUrl = localStorage.getItem("sheetUrl_4col");
+      const savedUrl = localStorage.getItem("sheetUrl_photo_v2");
       if (savedUrl) {
         document.getElementById("sheetUrlInput").value = savedUrl;
         connectGoogleSheet(savedUrl, true);
@@ -373,6 +451,7 @@
       document.getElementById("stuNo").textContent = "#--";
       document.getElementById("metaBadges").classList.add("opacity-40");
       document.getElementById("subPrompt").textContent = `${total} students loaded in ${currentGroup}`;
+      renderPhoto("", "Ready to Draw!");
       resetTimer();
       updateUI();
     }
@@ -386,6 +465,7 @@
       if (!pool || pool.length === 0) {
         document.getElementById("stuName").textContent = "All Students Drawn! 🎉";
         document.getElementById("subPrompt").textContent = "Click 'Reset' to restart this group.";
+        renderPhoto("", "All Done");
         return;
       }
 
@@ -409,14 +489,14 @@
         nameEl.textContent = randStu.name;
         classEl.textContent = randStu.cls;
         noEl.textContent = `#${randStu.no}`;
+        renderPhoto(randStu.photo, randStu.name);
         ticks++;
 
-        // Mechanical clicking sound during spin
         playBeep(260 + (ticks * 15), 0.04, "sine");
 
         if (ticks >= 18) {
           clearInterval(interval);
-          
+
           const winIdx = Math.floor(Math.random() * pool.length);
           const winner = pool[winIdx];
 
@@ -426,21 +506,19 @@
           nameEl.textContent = winner.name;
           classEl.textContent = winner.cls;
           noEl.textContent = `#${winner.no}`;
+          renderPhoto(winner.photo, winner.name);
           document.getElementById("subPrompt").textContent = `Selected from Group ${currentGroup}`;
           resultCard.classList.add("winner-pop");
 
-          // Confetti Celebration
           if (typeof confetti === "function") {
             confetti({ particleCount: 50, spread: 65, origin: { y: 0.6 } });
           }
 
-          // Fanfare tone
           playBeep(659.25, 0.25, "triangle");
 
           isDrawing = false;
           updateUI();
 
-          // Auto-start Timer if enabled
           if (document.getElementById("autoStartTimer").checked) {
             startTimer();
           }
@@ -468,23 +546,32 @@
       if (history.length === 0) {
         histEl.innerHTML = `<li class="text-slate-500 italic text-center py-10">No students drawn in this group yet.</li>`;
       } else {
-        histEl.innerHTML = history.map((s, idx) => `
-          <li class="bg-slate-800/90 border border-slate-700/80 px-3 py-2 rounded-xl flex justify-between items-center">
-            <div class="flex items-center gap-2">
-              <span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold text-xs px-2 py-0.5 rounded-md">
-                ${s.cls} #${s.no}
-              </span>
-              <span class="font-semibold text-white">${s.name}</span>
-            </div>
-            <span class="text-xs text-slate-400 font-medium">#${history.length - idx}</span>
-          </li>
-        `).join("");
+        histEl.innerHTML = history.map((s, idx) => {
+          const directPhoto = formatPhotoUrl(s.photo);
+          const fallbackText = getLastTwoWords(s.name);
+          const avatarHtml = directPhoto 
+            ? `<img src="${directPhoto}" class="w-8 h-8 rounded-full object-cover border border-slate-600" onerror="this.outerHTML='<div class=\\'w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-indigo-300 text-center px-0.5 leading-none\\'>${fallbackText}</div>'" />`
+            : `<div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-indigo-300 text-center px-0.5 leading-none">${fallbackText}</div>`;
+
+          return `
+            <li class="bg-slate-800/90 border border-slate-700/80 px-3 py-2 rounded-xl flex justify-between items-center">
+              <div class="flex items-center gap-2.5">
+                ${avatarHtml}
+                <div class="flex items-center gap-1.5">
+                  <span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold text-xs px-2 py-0.5 rounded-md">
+                    ${s.cls} #${s.no}
+                  </span>
+                  <span class="font-semibold text-white">${s.name}</span>
+                </div>
+              </div>
+              <span class="text-xs text-slate-400 font-medium">#${history.length - idx}</span>
+            </li>
+          `;
+        }).join("");
       }
     }
 
-    /* ========================================================
-       TIMER LOGIC
-    ======================================================== */
+    /* Timer Logic */
     function formatTime(sec) {
       const m = Math.floor(sec / 60);
       const s = sec % 60;
@@ -511,7 +598,6 @@
       selectedDuration = seconds;
       resetTimer();
 
-      // Highlight active preset button
       document.querySelectorAll(".timer-preset-btn").forEach(btn => {
         const val = parseInt(btn.textContent);
         if (val === seconds) {
@@ -523,11 +609,8 @@
     }
 
     function toggleTimer() {
-      if (isTimerRunning) {
-        pauseTimer();
-      } else {
-        startTimer();
-      }
+      if (isTimerRunning) pauseTimer();
+      else startTimer();
     }
 
     function startTimer() {
@@ -546,7 +629,7 @@
         updateTimerDisplay();
 
         if (timeLeft <= 5 && timeLeft > 0) {
-          playBeep(440, 0.08, "square"); // Tick warning sound
+          playBeep(440, 0.08, "square");
         }
 
         if (timeLeft <= 0) {
@@ -593,9 +676,7 @@
       document.getElementById("configPanel").classList.toggle("hidden");
     }
 
-    /* ========================================================
-       DATA PARSING & IMPORT ENGINES
-    ======================================================== */
+    /* Universal Data Parsing: Accepts 4 or 5 Columns */
     function parseRawTextToGroups(rawText) {
       const lines = rawText.split(/\r?\n/).filter(l => l.trim() !== "");
       if (lines.length === 0) return null;
@@ -619,10 +700,21 @@
       const startIdx = isHeader ? 1 : 0;
 
       for (let i = startIdx; i < lines.length; i++) {
-        const [grp, cls, no, name] = splitLine(lines[i]);
+        const row = splitLine(lines[i]);
+        const grp = row[0];
+        const cls = row[1];
+        const no = row[2];
+        const name = row[3];
+        const photo = row[4] || "";
+
         if (grp && name) {
           if (!parsed[grp]) parsed[grp] = [];
-          parsed[grp].push({ cls: cls || "-", no: no || "-", name });
+          parsed[grp].push({
+            cls: cls || "-",
+            no: no || "-",
+            name: name,
+            photo: photo
+          });
         }
       }
       return Object.keys(parsed).length > 0 ? parsed : null;
@@ -646,21 +738,22 @@
         const cls = c[1]?.f || c[1]?.v ? String(c[1].f || c[1].v).trim() : "-";
         const no  = c[2]?.f || c[2]?.v ? String(c[2].f || c[2].v).trim() : "-";
         const name = c[3]?.f || c[3]?.v ? String(c[3].f || c[3].v).trim() : "";
+        const photo = c[4]?.f || c[4]?.v ? String(c[4].f || c[4].v).trim() : "";
 
         if (grp && name && grp.toLowerCase() !== "group") {
           if (!parsed[grp]) parsed[grp] = [];
-          parsed[grp].push({ cls, no, name });
+          parsed[grp].push({ cls, no, name, photo });
           count++;
         }
       });
 
       if (Object.keys(parsed).length > 0) {
         groupData = parsed;
-        localStorage.setItem("savedClassRoster_4col", JSON.stringify(parsed));
+        localStorage.setItem("savedClassRoster_photo_v2", JSON.stringify(parsed));
         setupPools();
         status.textContent = `✅ Loaded ${Object.keys(parsed).length} groups (${count} students) from Google Sheet!`;
       } else {
-        status.textContent = "⚠️ Found sheet, but 4 columns (Group, Class, Class number, Name) could not be parsed.";
+        status.textContent = "⚠️ Found sheet, but student columns could not be parsed.";
       }
     };
 
@@ -669,7 +762,7 @@
       const status = document.getElementById("syncStatus");
       if (!url) return;
 
-      localStorage.setItem("sheetUrl_4col", url);
+      localStorage.setItem("sheetUrl_photo_v2", url);
       if (!silent) status.textContent = "⏳ Connecting to Google Sheet...";
 
       const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -697,7 +790,7 @@
         const parsed = parseRawTextToGroups(text);
         if (parsed) {
           groupData = parsed;
-          localStorage.setItem("savedClassRoster_4col", JSON.stringify(parsed));
+          localStorage.setItem("savedClassRoster_photo_v2", JSON.stringify(parsed));
           setupPools();
           status.textContent = `✅ Loaded ${Object.keys(parsed).length} groups from CSV link!`;
         }
@@ -715,11 +808,11 @@
         const status = document.getElementById("syncStatus");
         if (parsed) {
           groupData = parsed;
-          localStorage.setItem("savedClassRoster_4col", JSON.stringify(parsed));
+          localStorage.setItem("savedClassRoster_photo_v2", JSON.stringify(parsed));
           setupPools();
           status.textContent = `✅ Loaded ${Object.keys(parsed).length} groups from ${file.name}!`;
         } else {
-          status.textContent = "⚠️ Invalid CSV format. Check that Columns A-D are Group, Class, Class number, Name.";
+          status.textContent = "⚠️ Invalid CSV format. Check that columns are Group, Class, Class No, Name, [Photo].";
         }
       };
       reader.readAsText(file);
@@ -732,18 +825,18 @@
 
       if (parsed) {
         groupData = parsed;
-        localStorage.setItem("savedClassRoster_4col", JSON.stringify(parsed));
+        localStorage.setItem("savedClassRoster_photo_v2", JSON.stringify(parsed));
         setupPools();
         status.textContent = `✅ Saved ${Object.keys(parsed).length} groups to browser memory!`;
         document.getElementById("pasteArea").value = "";
       } else {
-        status.textContent = "⚠️ Please paste 4 columns: Group, Class, Class number, Name.";
+        status.textContent = "⚠️ Please paste columns: Group, Class, Class number, Name, [Photo URL].";
       }
     }
 
     function clearSavedData() {
-      localStorage.removeItem("savedClassRoster_4col");
-      localStorage.removeItem("sheetUrl_4col");
+      localStorage.removeItem("savedClassRoster_photo_v2");
+      localStorage.removeItem("sheetUrl_photo_v2");
       groupData = JSON.parse(JSON.stringify(defaultData));
       document.getElementById("sheetUrlInput").value = "";
       document.getElementById("syncStatus").textContent = "Restored default sample data.";
