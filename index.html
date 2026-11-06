@@ -51,6 +51,14 @@
     .photo-shadow {
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(99, 102, 241, 0.3);
     }
+    @keyframes mysterySpin {
+      0% { transform: scale(0.95) rotate(-6deg); }
+      50% { transform: scale(1.06) rotate(6deg); }
+      100% { transform: scale(0.95) rotate(-6deg); }
+    }
+    .blind-pulse {
+      animation: mysterySpin 0.45s infinite ease-in-out;
+    }
   </style>
 </head>
 <body class="text-white min-h-screen flex flex-col items-center p-3 md:p-6 select-none">
@@ -155,9 +163,9 @@
         <!-- Center Student Details with Photo Avatar -->
         <div id="resultCard" class="my-auto text-center w-full py-2 flex flex-col items-center">
 
-          <!-- Student Photo / Avatar Circle -->
+          <!-- Student Photo / Blinded Mystery Avatar Circle -->
           <div class="relative mb-4">
-            <div id="photoContainer" class="w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-indigo-500/40 bg-slate-800 overflow-hidden photo-shadow flex items-center justify-center transition-transform duration-300">
+            <div id="photoContainer" class="w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-indigo-500/40 bg-slate-800 overflow-hidden photo-shadow flex items-center justify-center transition-all duration-300">
               <span id="avatarFallback" class="text-xl sm:text-2xl font-extrabold text-indigo-200 tracking-wide text-center px-2 break-words leading-tight">🎯</span>
               <img id="stuPhoto" src="" alt="Student Photo" class="hidden w-full h-full object-cover" />
             </div>
@@ -184,14 +192,20 @@
 
         <!-- Bottom Controls -->
         <div class="w-full flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t border-slate-700/60">
-          <label class="flex items-center gap-2 text-xs sm:text-sm text-slate-300 cursor-pointer hover:text-white transition">
-            <input id="noRepeatToggle" type="checkbox" checked class="w-4 h-4 rounded accent-indigo-500" />
-            <span>No-repeat mode (exclude drawn students)</span>
-          </label>
+          <div class="flex flex-wrap items-center gap-4">
+            <label class="flex items-center gap-2 text-xs sm:text-sm text-slate-300 cursor-pointer hover:text-white transition">
+              <input id="noRepeatToggle" type="checkbox" checked class="w-4 h-4 rounded accent-indigo-500" />
+              <span>No-repeat mode</span>
+            </label>
+            <label class="flex items-center gap-2 text-xs sm:text-sm text-slate-300 cursor-pointer hover:text-white transition">
+              <input id="animateToggle" type="checkbox" checked class="w-4 h-4 rounded accent-indigo-500" />
+              <span>Rolling suspense</span>
+            </label>
+          </div>
 
           <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-            <button onclick="resetGroup()" title="Reset current pool" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 px-3.5 py-3 rounded-2xl text-xs sm:text-sm font-bold transition active:scale-95">
-              🔄 Reset
+            <button onclick="resetGroup()" title="Reset current group pool" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 px-3.5 py-3 rounded-2xl text-xs sm:text-sm font-bold transition active:scale-95">
+              🔄 Reset Group
             </button>
             <button id="drawBtn" onclick="drawStudent()" class="flex-1 sm:flex-initial bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-400 hover:to-pink-400 text-white px-7 py-3 rounded-2xl text-base sm:text-lg font-extrabold glow-btn transition transform active:scale-95">
               🎲 Draw Student
@@ -298,6 +312,8 @@
     let remainingPool = {};
     let drawnHistory = {};
     let isDrawing = false;
+    let activeRenderToken = 0;
+    const preloadedImages = {}; // Cache preloaded Image objects for 0ms instant reveal
 
     // Timer Variables
     let selectedDuration = 30;
@@ -305,37 +321,53 @@
     let timerInterval = null;
     let isTimerRunning = false;
 
-    // Helper: Turn any Google Drive link or direct URL into an embeddable image URL
+    function savePoolState() {
+      try {
+        localStorage.setItem("savedRemainingPool_v3", JSON.stringify(remainingPool));
+        localStorage.setItem("savedDrawnHistory_v3", JSON.stringify(drawnHistory));
+      } catch (e) {}
+    }
+
+    // Turn any Google Drive link or direct URL into an embeddable image URL
     function formatPhotoUrl(rawUrl) {
       if (!rawUrl) return "";
       const trimmed = String(rawUrl).trim();
       if (!trimmed || trimmed === "-" || trimmed.toLowerCase() === "undefined") return "";
 
-      // Handle Google Drive links
       const driveMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
-                         trimmed.match(/id=([a-zA-Z0-9_-]+)/) ||
+                         trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
                          trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
       if (driveMatch) {
         const fileId = driveMatch[1];
-        // lh3 thumbnail preview format works across school domains without CORS/cookie blocks
         return `https://drive.google.com/thumbnail?id=${fileId}&sz=w600`;
       }
 
       return trimmed;
     }
 
-    // Helper: Display last 2 words of the student name for avatar fallback
+    // Background preloader so student photos are already cached in memory before reveal
+    function preloadGroupPhotos(grp) {
+      const list = groupData[grp] || [];
+      list.forEach(stu => {
+        const url = formatPhotoUrl(stu.photo);
+        if (url && !preloadedImages[url]) {
+          const img = new Image();
+          img.src = url;
+          preloadedImages[url] = img;
+        }
+      });
+    }
+
+    // Display last 2 words of the student name when no photo is available
     function getLastTwoWords(name) {
       if (!name || name === "Ready to Draw!" || name === "All Done") return "🎯";
       const cleaned = name.trim();
-      
-      // If English / space-separated words (e.g. "Chan Tai Man" -> "Tai Man")
+
       const words = cleaned.split(/\s+/).filter(Boolean);
       if (words.length >= 2) {
         return words.slice(-2).join(" ");
       } else if (words.length === 1) {
         const word = words[0];
-        // If Chinese characters without spaces (e.g. "陳大文" -> "大文")
         if (word.length >= 2) {
           return word.slice(-2);
         }
@@ -344,29 +376,75 @@
       return "🎓";
     }
 
-    // Display student photo or avatar fallback
-    function renderPhoto(photoUrl, name) {
+    // Blind the photo area with a mystery state while drawing
+    function setBlindAvatar(isSpinning = true) {
+      ++activeRenderToken;
+      const containerEl = document.getElementById("photoContainer");
       const imgEl = document.getElementById("stuPhoto");
       const fallbackEl = document.getElementById("avatarFallback");
-      const directUrl = formatPhotoUrl(photoUrl);
 
-      if (directUrl) {
-        imgEl.onerror = function() {
-          // Fallback if image fails to load (e.g. broken link or restricted permissions)
-          this.classList.add("hidden");
-          fallbackEl.classList.remove("hidden");
-          fallbackEl.textContent = getLastTwoWords(name);
-        };
-        imgEl.onload = function() {
-          this.classList.remove("hidden");
-          fallbackEl.classList.add("hidden");
-        };
-        imgEl.src = directUrl;
+      imgEl.classList.add("hidden");
+      imgEl.removeAttribute("src");
+      fallbackEl.classList.remove("hidden");
+      fallbackEl.textContent = isSpinning ? "❓" : "🎯";
+      fallbackEl.className = "text-4xl sm:text-5xl font-extrabold text-indigo-300 select-none";
+
+      if (isSpinning) {
+        containerEl.classList.add("blind-pulse");
       } else {
+        containerEl.classList.remove("blind-pulse");
+      }
+    }
+
+    // Reveal the picked student's photo (or 2-word name badge) instantaneously
+    function revealWinnerPhoto(photoUrl, name) {
+      const token = ++activeRenderToken;
+      const containerEl = document.getElementById("photoContainer");
+      const imgEl = document.getElementById("stuPhoto");
+      const fallbackEl = document.getElementById("avatarFallback");
+      const fallbackText = getLastTwoWords(name);
+
+      containerEl.classList.remove("blind-pulse");
+      fallbackEl.className = "text-xl sm:text-2xl font-extrabold text-indigo-200 tracking-wide text-center px-2 break-words leading-tight";
+
+      const directUrl = formatPhotoUrl(photoUrl);
+      if (!directUrl) {
+        imgEl.classList.add("hidden");
+        imgEl.removeAttribute("src");
+        fallbackEl.classList.remove("hidden");
+        fallbackEl.textContent = fallbackText;
+        return;
+      }
+
+      // Check if preloaded image is already ready in browser cache for instant 0ms display
+      const cached = preloadedImages[directUrl];
+      if (cached && cached.complete && cached.naturalWidth > 0) {
+        imgEl.src = directUrl;
+        imgEl.classList.remove("hidden");
+        fallbackEl.classList.add("hidden");
+        return;
+      }
+
+      // Show 2-word badge while image finishes loading, then swap immediately
+      imgEl.classList.add("hidden");
+      fallbackEl.classList.remove("hidden");
+      fallbackEl.textContent = fallbackText;
+
+      const preloadImg = cached || new Image();
+      preloadedImages[directUrl] = preloadImg;
+      preloadImg.onload = function() {
+        if (token !== activeRenderToken) return;
+        imgEl.src = directUrl;
+        imgEl.classList.remove("hidden");
+        fallbackEl.classList.add("hidden");
+      };
+      preloadImg.onerror = function() {
+        if (token !== activeRenderToken) return;
         imgEl.classList.add("hidden");
         fallbackEl.classList.remove("hidden");
-        fallbackEl.textContent = getLastTwoWords(name);
-      }
+        fallbackEl.textContent = fallbackText;
+      };
+      if (!preloadImg.src) preloadImg.src = directUrl;
     }
 
     // Sound FX via Web Audio API
@@ -411,25 +489,42 @@
       if (savedRoster) {
         try { groupData = JSON.parse(savedRoster); } catch (e) {}
       }
-      setupPools();
+
+      let restoredPools = null;
+      let restoredHistory = null;
+      try {
+        restoredPools = JSON.parse(localStorage.getItem("savedRemainingPool_v3"));
+        restoredHistory = JSON.parse(localStorage.getItem("savedDrawnHistory_v3"));
+      } catch (e) {}
+
+      setupPools(restoredPools, restoredHistory);
 
       const savedUrl = localStorage.getItem("sheetUrl_photo_v2");
       if (savedUrl) {
         document.getElementById("sheetUrlInput").value = savedUrl;
-        connectGoogleSheet(savedUrl, true);
       }
 
       updateTimerDisplay();
     }
 
-    function setupPools() {
+    function setupPools(restoredPools = null, restoredHistory = null) {
       const select = document.getElementById("groupSelect");
       select.innerHTML = "";
       const groups = Object.keys(groupData);
 
       groups.forEach(grp => {
-        remainingPool[grp] = [...groupData[grp]];
-        drawnHistory[grp] = [];
+        if (restoredPools && Array.isArray(restoredPools[grp])) {
+          remainingPool[grp] = restoredPools[grp];
+        } else {
+          remainingPool[grp] = [...groupData[grp]];
+        }
+
+        if (restoredHistory && Array.isArray(restoredHistory[grp])) {
+          drawnHistory[grp] = restoredHistory[grp];
+        } else {
+          drawnHistory[grp] = [];
+        }
+
         const opt = document.createElement("option");
         opt.value = grp;
         opt.textContent = grp;
@@ -437,6 +532,7 @@
         select.appendChild(opt);
       });
 
+      savePoolState();
       currentGroup = groups[0] || "";
       switchGroup();
     }
@@ -444,84 +540,141 @@
     function switchGroup() {
       currentGroup = document.getElementById("groupSelect").value;
       const total = groupData[currentGroup]?.length || 0;
+      const history = drawnHistory[currentGroup] || [];
+
+      // Preload all student photos for this group in the background for instant display
+      preloadGroupPhotos(currentGroup);
 
       document.getElementById("groupBadge").textContent = `GROUP: ${currentGroup}`;
-      document.getElementById("stuName").textContent = "Ready to Draw!";
-      document.getElementById("stuClass").textContent = "--";
-      document.getElementById("stuNo").textContent = "#--";
-      document.getElementById("metaBadges").classList.add("opacity-40");
-      document.getElementById("subPrompt").textContent = `${total} students loaded in ${currentGroup}`;
-      renderPhoto("", "Ready to Draw!");
+
+      if (history.length > 0) {
+        const lastWinner = history[0];
+        document.getElementById("stuName").textContent = lastWinner.name;
+        document.getElementById("stuClass").textContent = lastWinner.cls;
+        document.getElementById("stuNo").textContent = `#${lastWinner.no}`;
+        document.getElementById("metaBadges").classList.remove("opacity-40");
+        document.getElementById("subPrompt").textContent = `Last drawn in ${currentGroup} (${remainingPool[currentGroup]?.length || 0} remaining)`;
+        revealWinnerPhoto(lastWinner.photo, lastWinner.name);
+      } else {
+        document.getElementById("stuName").textContent = "Ready to Draw!";
+        document.getElementById("stuClass").textContent = "--";
+        document.getElementById("stuNo").textContent = "#--";
+        document.getElementById("metaBadges").classList.add("opacity-40");
+        document.getElementById("subPrompt").textContent = `${total} students ready in ${currentGroup}`;
+        setBlindAvatar(false);
+      }
+
       resetTimer();
       updateUI();
+    }
+
+    function finalizeWinner(winner, pool, winIdx, noRepeat) {
+      const nameEl = document.getElementById("stuName");
+      const classEl = document.getElementById("stuClass");
+      const noEl = document.getElementById("stuNo");
+      const resultCard = document.getElementById("resultCard");
+      const metaBadges = document.getElementById("metaBadges");
+
+      if (noRepeat) {
+        pool.splice(winIdx, 1);
+      }
+      drawnHistory[currentGroup].unshift(winner);
+      savePoolState();
+
+      metaBadges.classList.remove("opacity-40");
+      nameEl.textContent = winner.name;
+      classEl.textContent = winner.cls;
+      noEl.textContent = `#${winner.no}`;
+
+      // Instant photo reveal (unblinds the mystery avatar)
+      revealWinnerPhoto(winner.photo, winner.name);
+
+      document.getElementById("subPrompt").textContent = `Selected from Group ${currentGroup}`;
+      resultCard.classList.add("winner-pop");
+
+      if (typeof confetti === "function") {
+        confetti({ particleCount: 50, spread: 65, origin: { y: 0.6 } });
+      }
+
+      playBeep(659.25, 0.25, "triangle");
+
+      isDrawing = false;
+      updateUI();
+
+      if (document.getElementById("autoStartTimer").checked) {
+        startTimer();
+      }
     }
 
     function drawStudent() {
       if (isDrawing || !currentGroup) return;
 
       const noRepeat = document.getElementById("noRepeatToggle").checked;
+      const useAnimation = document.getElementById("animateToggle").checked;
       const pool = noRepeat ? remainingPool[currentGroup] : groupData[currentGroup];
 
       if (!pool || pool.length === 0) {
         document.getElementById("stuName").textContent = "All Students Drawn! 🎉";
-        document.getElementById("subPrompt").textContent = "Click 'Reset' to restart this group.";
-        renderPhoto("", "All Done");
+        document.getElementById("subPrompt").textContent = "Click '🔄 Reset Group' to start a new round.";
+        setBlindAvatar(false);
         return;
       }
 
       isDrawing = true;
       resetTimer();
 
-      const fullList = groupData[currentGroup];
       const nameEl = document.getElementById("stuName");
       const classEl = document.getElementById("stuClass");
       const noEl = document.getElementById("stuNo");
       const metaBadges = document.getElementById("metaBadges");
       const resultCard = document.getElementById("resultCard");
 
-      metaBadges.classList.remove("opacity-40");
       resultCard.classList.remove("winner-pop");
-      document.getElementById("subPrompt").textContent = "Selecting a student...";
+
+      // Pick the winner from the remaining pool right away and preload their photo immediately
+      const winIdx = Math.floor(Math.random() * pool.length);
+      const winner = pool[winIdx];
+      const winnerPhotoUrl = formatPhotoUrl(winner.photo);
+      if (winnerPhotoUrl && !preloadedImages[winnerPhotoUrl]) {
+        const preloadWinner = new Image();
+        preloadWinner.src = winnerPhotoUrl;
+        preloadedImages[winnerPhotoUrl] = preloadWinner;
+      }
+
+      // If rolling suspense is off OR only 1 student is left, reveal immediately
+      if (!useAnimation || pool.length === 1) {
+        finalizeWinner(winner, pool, winIdx, noRepeat);
+        return;
+      }
+
+      // BLIND THE PHOTO: Show animated mystery '❓' until the student is picked!
+      setBlindAvatar(true);
+      metaBadges.classList.remove("opacity-40");
+      document.getElementById("subPrompt").textContent = "Drawing a student... Photo hidden until picked!";
 
       let ticks = 0;
+      const maxTicks = 14;
+      let lastPreviewIdx = -1;
+
       const interval = setInterval(() => {
-        const randStu = fullList[Math.floor(Math.random() * fullList.length)];
+        // Strictly preview from remaining undrawn pool while keeping the photo blinded
+        let randIdx = Math.floor(Math.random() * pool.length);
+        if (pool.length > 1 && randIdx === lastPreviewIdx) {
+          randIdx = (randIdx + 1) % pool.length;
+        }
+        lastPreviewIdx = randIdx;
+
+        const randStu = pool[randIdx];
         nameEl.textContent = randStu.name;
         classEl.textContent = randStu.cls;
         noEl.textContent = `#${randStu.no}`;
-        renderPhoto(randStu.photo, randStu.name);
         ticks++;
 
-        playBeep(260 + (ticks * 15), 0.04, "sine");
+        playBeep(260 + (ticks * 18), 0.04, "sine");
 
-        if (ticks >= 18) {
+        if (ticks >= maxTicks) {
           clearInterval(interval);
-
-          const winIdx = Math.floor(Math.random() * pool.length);
-          const winner = pool[winIdx];
-
-          if (noRepeat) pool.splice(winIdx, 1);
-          drawnHistory[currentGroup].unshift(winner);
-
-          nameEl.textContent = winner.name;
-          classEl.textContent = winner.cls;
-          noEl.textContent = `#${winner.no}`;
-          renderPhoto(winner.photo, winner.name);
-          document.getElementById("subPrompt").textContent = `Selected from Group ${currentGroup}`;
-          resultCard.classList.add("winner-pop");
-
-          if (typeof confetti === "function") {
-            confetti({ particleCount: 50, spread: 65, origin: { y: 0.6 } });
-          }
-
-          playBeep(659.25, 0.25, "triangle");
-
-          isDrawing = false;
-          updateUI();
-
-          if (document.getElementById("autoStartTimer").checked) {
-            startTimer();
-          }
+          finalizeWinner(winner, pool, winIdx, noRepeat);
         }
       }, 55);
     }
@@ -530,6 +683,7 @@
       if (!currentGroup) return;
       remainingPool[currentGroup] = [...groupData[currentGroup]];
       drawnHistory[currentGroup] = [];
+      savePoolState();
       resetTimer();
       switchGroup();
     }
@@ -837,6 +991,8 @@
     function clearSavedData() {
       localStorage.removeItem("savedClassRoster_photo_v2");
       localStorage.removeItem("sheetUrl_photo_v2");
+      localStorage.removeItem("savedRemainingPool_v3");
+      localStorage.removeItem("savedDrawnHistory_v3");
       groupData = JSON.parse(JSON.stringify(defaultData));
       document.getElementById("sheetUrlInput").value = "";
       document.getElementById("syncStatus").textContent = "Restored default sample data.";
